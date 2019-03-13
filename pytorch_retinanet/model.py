@@ -7,18 +7,22 @@ import torch.utils.model_zoo as model_zoo
 from .utils import BasicBlock, Bottleneck, BBoxTransform, ClipBoxes, non_max_suppression
 from .anchors import Anchors
 from . import losses
+import numpy as np
 
-def nms(dets, thresh):
+
+def nms(boxes, scores, thresh):
     """
     Calculate non maximum suppression
-    :param dets: pytorch tensor containing rects and scores
+    :param scores: pytorch tensor containing rects
+    :param scores: pytorch tensor containing scores
     :param thresh: overlapping thresh used for nms
     :return: indices corresponding to the found rectangles
     """
-    scores = dets[:, 4].cpu().detach().numpy()
-    boxes = dets[:, 0:4].cpu().detach().numpy()
+    scores = scores.cpu().detach().numpy()
+    boxes = boxes.cpu().detach().numpy()
 
     return non_max_suppression(boxes, confidences=scores, overlap_thresh=thresh)
+
 
 model_urls = {
     'resnet18': 'https://download.pytorch.org/models/resnet18-5c106cde.pth',
@@ -28,17 +32,18 @@ model_urls = {
     'resnet152': 'https://download.pytorch.org/models/resnet152-b121ed2d.pth',
 }
 
+
 class PyramidFeatures(nn.Module):
     def __init__(self, C3_size, C4_size, C5_size, feature_size=256):
         super(PyramidFeatures, self).__init__()
 
         # upsample C5 to get P5 from the FPN paper
-        self.P5_1           = nn.Conv2d(C5_size, feature_size, kernel_size=1, stride=1, padding=0)
-        self.P5_2           = nn.Conv2d(feature_size, feature_size, kernel_size=3, stride=1, padding=1)
+        self.P5_1 = nn.Conv2d(C5_size, feature_size, kernel_size=1, stride=1, padding=0)
+        self.P5_2 = nn.Conv2d(feature_size, feature_size, kernel_size=3, stride=1, padding=1)
 
         # add P5 elementwise to C4
-        self.P4_1           = nn.Conv2d(C4_size, feature_size, kernel_size=1, stride=1, padding=0)
-        self.P4_2           = nn.Conv2d(feature_size, feature_size, kernel_size=3, stride=1, padding=1)
+        self.P4_1 = nn.Conv2d(C4_size, feature_size, kernel_size=1, stride=1, padding=0)
+        self.P4_2 = nn.Conv2d(feature_size, feature_size, kernel_size=3, stride=1, padding=1)
 
         # add P4 elementwise to C3
         self.P3_1 = nn.Conv2d(C3_size, feature_size, kernel_size=1, stride=1, padding=0)
@@ -52,7 +57,6 @@ class PyramidFeatures(nn.Module):
         self.P7_2 = nn.Conv2d(feature_size, feature_size, kernel_size=3, stride=2, padding=1)
 
     def forward(self, inputs):
-
         C3, C4, C5 = inputs
 
         P5_x = self.P5_1(C5)
@@ -92,10 +96,9 @@ class RegressionModel(nn.Module):
         self.conv4 = nn.Conv2d(feature_size, feature_size, kernel_size=3, padding=1)
         self.act4 = nn.ReLU()
 
-        self.output = nn.Conv2d(feature_size, num_anchors*4, kernel_size=3, padding=1)
+        self.output = nn.Conv2d(feature_size, num_anchors * 4, kernel_size=3, padding=1)
 
     def forward(self, x):
-
         out = self.conv1(x)
         out = self.act1(out)
 
@@ -114,6 +117,7 @@ class RegressionModel(nn.Module):
         out = out.permute(0, 2, 3, 1)
 
         return out.contiguous().view(out.shape[0], -1, 4)
+
 
 class ClassificationModel(nn.Module):
     def __init__(self, num_features_in, num_anchors=9, num_classes=80, prior=0.01, feature_size=256):
@@ -134,11 +138,10 @@ class ClassificationModel(nn.Module):
         self.conv4 = nn.Conv2d(feature_size, feature_size, kernel_size=3, padding=1)
         self.act4 = nn.ReLU()
 
-        self.output = nn.Conv2d(feature_size, num_anchors*num_classes, kernel_size=3, padding=1)
+        self.output = nn.Conv2d(feature_size, num_anchors * num_classes, kernel_size=3, padding=1)
         self.output_act = nn.Sigmoid()
 
     def forward(self, x):
-
         out = self.conv1(x)
         out = self.act1(out)
 
@@ -163,6 +166,7 @@ class ClassificationModel(nn.Module):
 
         return out2.contiguous().view(x.shape[0], -1, self.num_classes)
 
+
 class ResNet(nn.Module):
 
     def __init__(self, num_classes, block, layers):
@@ -178,9 +182,11 @@ class ResNet(nn.Module):
         self.layer4 = self._make_layer(block, 512, layers[3], stride=2)
 
         if block == BasicBlock:
-            fpn_sizes = [self.layer2[layers[1]-1].conv2.out_channels, self.layer3[layers[2]-1].conv2.out_channels, self.layer4[layers[3]-1].conv2.out_channels]
+            fpn_sizes = [self.layer2[layers[1] - 1].conv2.out_channels, self.layer3[layers[2] - 1].conv2.out_channels,
+                         self.layer4[layers[3] - 1].conv2.out_channels]
         elif block == Bottleneck:
-            fpn_sizes = [self.layer2[layers[1]-1].conv3.out_channels, self.layer3[layers[2]-1].conv3.out_channels, self.layer4[layers[3]-1].conv3.out_channels]
+            fpn_sizes = [self.layer2[layers[1] - 1].conv3.out_channels, self.layer3[layers[2] - 1].conv3.out_channels,
+                         self.layer4[layers[3] - 1].conv3.out_channels]
 
         self.fpn = PyramidFeatures(fpn_sizes[0], fpn_sizes[1], fpn_sizes[2])
 
@@ -206,7 +212,7 @@ class ResNet(nn.Module):
         prior = 0.01
 
         self.classificationModel.output.weight.data.fill_(0)
-        self.classificationModel.output.bias.data.fill_(-math.log((1.0-prior)/prior))
+        self.classificationModel.output.bias.data.fill_(-math.log((1.0 - prior) / prior))
 
         self.regressionModel.output.weight.data.fill_(0)
         self.regressionModel.output.bias.data.fill_(0)
@@ -269,22 +275,40 @@ class ResNet(nn.Module):
 
             scores = torch.max(classification, dim=2, keepdim=True)[0]
 
-            scores_over_thresh = (scores>0.05)[0, :, 0]
+            # create tensors for results
+            batch_size = classification.shape[0]
+            detection_count = 300  # maximum of 300 detections per image
 
-            if scores_over_thresh.sum() == 0:
-                # no boxes to NMS, just return
-                return [torch.zeros(0), torch.zeros(0), torch.zeros(0, 4)]
+            res_scores = torch.zeros((batch_size, detection_count)).type_as(scores)
+            res_classifications = torch.zeros((batch_size, detection_count)).type_as(classification)
+            res_bboxes = torch.zeros((batch_size, detection_count, 4)).type_as(transformed_anchors)
 
-            classification = classification[:, scores_over_thresh, :]
-            transformed_anchors = transformed_anchors[:, scores_over_thresh, :]
-            scores = scores[:, scores_over_thresh, :]
+            # go through each item in the batch and calculate the final scores, classifications, and bboxes
+            for i in range(batch_size):
 
-            anchors_nms_idx = nms(torch.cat([transformed_anchors, scores], dim=2)[0, :, :], 0.5)
+                scores_over_thresh = (scores[i] > 0.05)[:, 0]
+                if scores_over_thresh.sum() == 0:
+                    continue
 
-            nms_scores, nms_class = classification[0, anchors_nms_idx, :].max(dim=1)
+                # filter detections with a low score
+                c = classification[i, scores_over_thresh, :]
+                t_a = transformed_anchors[i, scores_over_thresh, :]
+                s = scores[i, scores_over_thresh, 0]
 
-            return [nms_scores, nms_class, transformed_anchors[0, anchors_nms_idx, :]]
+                # computer non-maximum suppression
+                anchors_nms_idx = nms(boxes=t_a, scores=s, thresh=0.5)
 
+                # get score and class 
+                nms_scores, nms_class = c[anchors_nms_idx, :].max(dim=1)
+
+                end_idx = np.min([detection_count, len(anchors_nms_idx)])
+
+                # fill the result tensors with results
+                res_scores[i, :end_idx] = nms_scores
+                res_classifications[i, :end_idx] = nms_class
+                res_bboxes[i, :end_idx, :] = t_a[anchors_nms_idx, :]
+
+            return res_scores, res_classifications, res_bboxes
 
 
 def resnet18(num_classes, pretrained=False, device=None, **kwargs):
@@ -336,6 +360,7 @@ def resnet50(num_classes, pretrained=False, device=None, **kwargs):
         model.to(device)
 
     return model
+
 
 def resnet101(num_classes, pretrained=False, device=None, **kwargs):
     """Constructs a ResNet-101 model.
