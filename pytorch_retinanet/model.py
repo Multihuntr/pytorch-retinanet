@@ -152,16 +152,14 @@ class ClassificationModel(nn.Module):
         out = self.act4(out)
 
         out = self.output(out)
+
+        # out is B x C x H x W, with C = n_classes + n_anchors
+        batch_size, channels, height, width = out.shape
+
+        out = out.permute(0, 2, 3, 1).contiguous().view(batch_size, -1, self.num_classes)
+        # using the last activate func after the output is reshaped as (Batch size, H*W*n_anchors, n_classes)
         out = self.output_act(out)
-
-        # out is B x C x W x H, with C = n_classes + n_anchors
-        out1 = out.permute(0, 2, 3, 1)
-
-        batch_size, width, height, channels = out1.shape
-
-        out2 = out1.view(batch_size, width, height, self.num_anchors, self.num_classes)
-
-        return out2.contiguous().view(x.shape[0], -1, self.num_classes)
+        return out
 
 class ResNet(nn.Module):
 
