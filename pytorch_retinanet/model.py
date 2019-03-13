@@ -15,8 +15,8 @@ def nms(dets, thresh):
     :param thresh: overlapping thresh used for nms
     :return: indices corresponding to the found rectangles
     """
-    scores = dets[:, 4].detach().numpy()
-    boxes = dets[:, 0:4].detach().numpy()
+    scores = dets[:, 4].cpu().detach().numpy()
+    boxes = dets[:, 0:4].cpu().detach().numpy()
 
     return non_max_suppression(boxes, confidences=scores, overlap_thresh=thresh)
 
