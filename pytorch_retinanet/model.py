@@ -60,15 +60,15 @@ class PyramidFeatures(nn.Module):
         C3, C4, C5 = inputs
 
         P5_x = self.P5_1(C5)
-        P5_upsampled_x = nn.functional.interpolate(P5_x, scale_factor=2, mode='nearest')
         P5_x = self.P5_2(P5_x)
 
         P4_x = self.P4_1(C4)
+        P5_upsampled_x = nn.functional.interpolate(P5_x, size=P4_x.shape[-2:], mode='nearest')
         P4_x = P5_upsampled_x + P4_x
-        P4_upsampled_x = nn.functional.interpolate(P4_x, scale_factor=2, mode='nearest')
         P4_x = self.P4_2(P4_x)
 
         P3_x = self.P3_1(C3)
+        P4_upsampled_x = nn.functional.interpolate(P4_x, size=P3_x.shape[-2:], mode='nearest')
         P3_x = P3_x + P4_upsampled_x
         P3_x = self.P3_2(P3_x)
 
@@ -243,7 +243,17 @@ class ResNet(nn.Module):
                 layer.eval()
 
     def forward(self, inputs):
-
+        '''
+        During Training:
+            Expects inputs to be a tuple, with
+                [batch, channels, h, w]
+                and
+                [batch, n_boxes, 4+c]
+                    where the last is
+                    {y_min, y_max, x_min, x_max, class_1, class_2, ...}
+        During Testing:
+            Expects inputs shaped: [batch, channels, h, w]
+        '''
         if self.training:
             img_batch, annotations = inputs
         else:
@@ -298,7 +308,7 @@ class ResNet(nn.Module):
                 # computer non-maximum suppression
                 anchors_nms_idx = nms(boxes=t_a, scores=s, thresh=0.5)
 
-                # get score and class 
+                # get score and class
                 nms_scores, nms_class = c[anchors_nms_idx, :].max(dim=1)
 
                 end_idx = np.min([detection_count, len(anchors_nms_idx)])
