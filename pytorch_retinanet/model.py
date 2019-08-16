@@ -59,16 +59,16 @@ class PyramidFeatures(nn.Module):
     def forward(self, inputs):
         C3, C4, C5 = inputs
 
-        P5_x = self.P5_1(C5)
-        P5_x = self.P5_2(P5_x)
+        P5_x1 = self.P5_1(C5)
+        P5_x2 = self.P5_2(P5_x1)
 
         P4_x = self.P4_1(C4)
-        P5_upsampled_x = nn.functional.interpolate(P5_x, size=P4_x.shape[-2:], mode='nearest')
-        P4_x = P5_upsampled_x + P4_x
-        P4_x = self.P4_2(P4_x)
+        P5_upsampled_x = nn.functional.interpolate(P5_x1, size=P4_x.shape[-2:], mode='nearest')
+        P4_x1 = P5_upsampled_x + P4_x
+        P4_x2 = self.P4_2(P4_x1)
 
         P3_x = self.P3_1(C3)
-        P4_upsampled_x = nn.functional.interpolate(P4_x, size=P3_x.shape[-2:], mode='nearest')
+        P4_upsampled_x = nn.functional.interpolate(P4_x1, size=P3_x.shape[-2:], mode='nearest')
         P3_x = P3_x + P4_upsampled_x
         P3_x = self.P3_2(P3_x)
 
@@ -77,7 +77,7 @@ class PyramidFeatures(nn.Module):
         P7_x = self.P7_1(P6_x)
         P7_x = self.P7_2(P7_x)
 
-        return [P3_x, P4_x, P5_x, P6_x, P7_x]
+        return [P3_x, P4_x2, P5_x2, P6_x, P7_x]
 
 
 class RegressionModel(nn.Module):
